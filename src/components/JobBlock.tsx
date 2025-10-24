@@ -73,11 +73,12 @@ export default function JobBlock({
     <>
       <Box
         ref={isPreview ? undefined : drag as any}
+        data-testid={`job-block-${assignment.id}`}
         tabIndex={isPreview ? -1 : 0}
         position="absolute"
-        left={`calc(200px + ${startIndex * 100}%)`}
+        left={`calc(200px + ${startIndex * (100 / timeSlots.length)}%)`}
         top={`${staffIndex * 60}px`}
-        width={`${duration * 100}%`}
+        width={`${duration * (100 / timeSlots.length)}%`}
         height="50px"
         bg={isPreview ? 'blue.200' : isDragging ? 'blue.100' : 'blue.500'}
         color="white"
@@ -86,10 +87,11 @@ export default function JobBlock({
         cursor={isPreview ? 'default' : 'pointer'}
         onClick={isPreview ? undefined : onClick}
         onKeyDown={handleKeyDown}
+        onMouseDown={isPreview ? undefined : (e) => e.stopPropagation()}
         onMouseEnter={() => setShowTooltip(true)}
         onMouseLeave={() => setShowTooltip(false)}
         opacity={isPreview ? 0.6 : isDragging ? 0.5 : 1}
-        zIndex={isPreview ? 1 : 2}
+        zIndex={isPreview ? 1 : 10}
         boxShadow="sm"
         _hover={isPreview ? undefined : { boxShadow: 'md' }}
         pointerEvents={isPreview ? 'none' : 'auto'}
@@ -108,18 +110,19 @@ export default function JobBlock({
       {showTooltip && (
         <Box
           position="absolute"
-          left={`calc(200px + ${startIndex * 100}%)`}
+          left={`calc(200px + ${startIndex * (100 / timeSlots.length)}%)`}
           top={`${staffIndex * 60 - 80}px`}
           bg="white"
           color="black"
           p={2}
           borderRadius="md"
           boxShadow="md"
-          zIndex={10}
+          zIndex={20}
           width="auto"
           minW="150px"
           border="1px solid"
           borderColor="gray.200"
+          pointerEvents="none"
         >
           <Text fontWeight="bold" fontSize="sm">
             {job.title}

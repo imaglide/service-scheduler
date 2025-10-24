@@ -1,21 +1,21 @@
-import React from 'react';
-import { Box, Grid, GridItem, useDisclosure, useToast, Text } from '@chakra-ui/react';
-import { useState } from 'react';
+import React, { useState } from 'react';
+import { Box, Grid, GridItem, Text, useDisclosure, useToast } from '@chakra-ui/react';
+import { JobWithAssignments, Staff, Assignment } from '../types/scheduler';
 import JobModal from './JobModal';
-import { Job, Staff, Assignment, JobWithAssignments } from '../types/scheduler';
+import JobBlock from './JobBlock';
 
-// Generate time slots from 8 AM to 6 PM in 30-minute intervals
-const TIME_SLOTS = Array.from({ length: 21 }, (_, i) => {
-  const hour = Math.floor((i + 16) / 2); // Start from 8 AM (16 half-hours)
-  const minute = (i + 16) % 2 === 0 ? '00' : '30';
-  return `${hour.toString().padStart(2, '0')}:${minute}`;
-});
+const TIME_SLOTS = [
+  '08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00', '11:30',
+  '12:00', '12:30', '13:00', '13:30', '14:00', '14:30', '15:00', '15:30',
+  '16:00', '16:30', '17:00'
+];
 
-const GRID_TEMPLATE_COLUMNS = `200px repeat(${TIME_SLOTS.length}, 1fr)`;
+const GRID_TEMPLATE_COLUMNS = '200px repeat(19, 1fr)';
 
 function snapToGrid(date: Date): Date {
-  const ms = 1000 * 60 * 30; // 30 minutes in milliseconds
-  return new Date(Math.round(date.getTime() / ms) * ms);
+  const minutes = date.getMinutes();
+  const snappedMinutes = minutes < 15 ? 0 : minutes < 45 ? 30 : 60;
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate(), date.getHours(), snappedMinutes % 60);
 }
 
 function getTimeSlotIndex(time: string): number {
@@ -32,17 +32,15 @@ function hasOverlap(
   staffId: string
 ): boolean {
   return existingAssignments.some(assignment => {
-    // Skip assignments for other staff members
     if (assignment.staff_id !== staffId) return false;
     
-    const jobStart = new Date(assignment.start_time);
-    const jobEnd = new Date(assignment.end_time);
+    const assignmentStart = new Date(assignment.start_time);
+    const assignmentEnd = new Date(assignment.end_time);
     
-    // Check if the new time range overlaps with the existing assignment
     return (
-      (newStart >= jobStart && newStart < jobEnd) || // New start time falls within existing job
-      (newEnd > jobStart && newEnd <= jobEnd) || // New end time falls within existing job
-      (newStart <= jobStart && newEnd >= jobEnd) // New job completely encompasses existing job
+      (newStart >= assignmentStart && newStart < assignmentEnd) ||
+      (newEnd > assignmentStart && newEnd <= assignmentEnd) ||
+      (newStart <= assignmentStart && newEnd >= assignmentEnd)
     );
   });
 }
@@ -51,48 +49,6 @@ interface SchedulerGridProps {
   jobs: JobWithAssignments[];
   staff: Staff[];
   onJobMove: (assignmentId: string, newStaffId: string, newStartTime: string, newEndTime: string) => void;
-}
-
-interface JobBlockProps {
-  job: JobWithAssignments;
-  assignment: Assignment;
-  onClick: () => void;
-  style?: React.CSSProperties;
-  key?: string;
-  'data-testid'?: string;
-}
-
-function JobBlock({ job, assignment, onClick, style, key, 'data-testid': testId }: JobBlockProps) {
-  const startTime = new Date(assignment.start_time);
-  const endTime = new Date(assignment.end_time);
-  const startIndex = getTimeSlotIndex(startTime.toTimeString().slice(0, 5));
-  const endIndex = getTimeSlotIndex(endTime.toTimeString().slice(0, 5));
-  const duration = endIndex - startIndex;
-
-  return (
-    <Box
-      position="absolute"
-      left={`${(startIndex / TIME_SLOTS.length) * 100}%`}
-      width={`${(duration / TIME_SLOTS.length) * 100}%`}
-      height="100%"
-      bg="blue.100"
-      border="1px solid"
-      borderColor="blue.300"
-      borderRadius="md"
-      p={2}
-      cursor="pointer"
-      onClick={onClick}
-      style={style}
-    >
-      <Text fontSize="xs" fontWeight="bold" noOfLines={1}>
-        {job.title}
-      </Text>
-      <Text fontSize="xs" color="gray.600" noOfLines={1}>
-        {startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} -{' '}
-        {endTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-      </Text>
-    </Box>
-  );
 }
 
 export default function SchedulerGrid({ jobs, staff, onJobMove }: SchedulerGridProps) {
@@ -287,6 +243,7 @@ export default function SchedulerGrid({ jobs, staff, onJobMove }: SchedulerGridP
               onDragLeave={handleDragLeave}
               onDrop={(e) => handleDrop(e, staffMember.id, timeSlot)}
               position="relative"
+              pointerEvents="none"
               _after={{
                 content: '""',
                 position: 'absolute',
@@ -295,42 +252,22 @@ export default function SchedulerGrid({ jobs, staff, onJobMove }: SchedulerGridP
                 bottom: 0,
                 width: '1px',
                 bg: 'gray.200',
+                pointerEvents: 'none',
               }}
               data-testid={`time-slot-${timeSlot}`}
+              sx={{
+                '&[data-drag-over="true"]': {
+                  pointerEvents: 'auto',
+                },
+              }}
             >
-              {jobs.map((job) => {
-                const assignment = job.assignments.find(
-                  (a) => a.staff_id === staffMember.id && 
-                  getTimeSlotIndex(a.start_time.split('T')[1].slice(0, 5)) <= getTimeSlotIndex(timeSlot) &&
-                  getTimeSlotIndex(a.end_time.split('T')[1].slice(0, 5)) > getTimeSlotIndex(timeSlot)
-                );
-
-                if (assignment) {
-                  const isSelected = selectedJob?.id === job.id;
-                  return (
-                    <JobBlock
-                      key={assignment.id}
-                      job={job}
-                      assignment={assignment}
-                      onClick={() => handleAssignmentClick(job)}
-                      style={{
-                        border: isSelected ? '2px solid' : '1px solid',
-                        borderColor: isSelected ? 'blue.500' : 'gray.200',
-                        boxShadow: isSelected ? '0 0 0 2px rgba(66, 153, 225, 0.2)' : 'none',
-                        zIndex: isSelected ? 1 : 0,
-                      }}
-                      data-testid={`job-block-${assignment.id}`}
-                    />
-                  );
-                }
-                return null;
-              })}
+              {/* JobBlocks are rendered separately below */}
             </GridItem>
           ))}
         </Grid>
       ))}
 
-      {/* Job blocks */}
+      {/* Job blocks - render all job blocks here to avoid duplication */}
       {jobs
         .filter((job) => job.status === 'scheduled')
         .flatMap((job) =>
@@ -339,8 +276,9 @@ export default function SchedulerGrid({ jobs, staff, onJobMove }: SchedulerGridP
               key={assignment.id}
               job={job}
               assignment={assignment}
+              staff={staff}
+              timeSlots={TIME_SLOTS}
               onClick={() => handleJobClick(job)}
-              data-testid={`job-block-${assignment.id}`}
             />
           ))
         )}
@@ -350,8 +288,10 @@ export default function SchedulerGrid({ jobs, staff, onJobMove }: SchedulerGridP
         <JobBlock
           job={dragPreview.job}
           assignment={dragPreview.assignment}
+          staff={staff}
+          timeSlots={TIME_SLOTS}
           onClick={() => {}}
-          data-testid={`job-block-${dragPreview.assignment.id}`}
+          isPreview={true}
         />
       )}
 
